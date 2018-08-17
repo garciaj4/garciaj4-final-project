@@ -194,9 +194,13 @@ class logout(BaseHandler):
 #this interacts with the MHW api found at https://mhw-db.com
 #to retreive weapon information
 def getWeapon(weapon):
-    query = '''{"name":{"$like":"%''' + weapon + '''%"}}'''
-    weaponURL = 'https://mhw-db.com/weapons?q=' + query
+    query = '''?q={"name":{"$like":"%''' + weapon + '''%"}}'''
+    projection = '''&p={"id":"true",%20"name":"true",%20"rarity":"true",%20"attack":"true",%20"sharpness":"true",%20"assets":"true"}'''
+    weaponURL = 'https://mhw-db.com/weapons' + query + projection
+
     result = urlfetch.fetch(url=weaponURL)
+    #if no results are found just store the name passed
+    #otherwise store/send the entry most similar
     if(result.status_code == 400):
         return weapon
     parsed = json.loads(result.content)
@@ -206,12 +210,14 @@ def getWeapon(weapon):
 #to retreive armor_set information
 def getArmorSet(armor_set):
     query = '''?q={"name":{"$like":"%''' + armor_set + '''%"}}'''
-    logging.info(query)
+    #logging.info(query)
     projection = '''&p={"id":"true",%20"name":"true",%20"rank":"true",%20"bonus":"true"}'''
-    logging.info(projection)
+    #logging.info(projection)
     armorURL = 'https://mhw-db.com/armor/sets' + query + projection
     result = urlfetch.fetch(url=armorURL)
-    logging.info(result.content)
+    #logging.info(result.content)
+    #if no results are found just store the name passed
+    #otherwise store/send the entry most similar
     if(result.status_code == 400):
         return armor_set
     parsed = json.loads(result.content)
@@ -231,7 +237,7 @@ class HunterHandler(BaseHandler):
             hunter_data = json.loads(self.request.body)
             h = Hunter()
             h.account_email = user.email
-            h.hunter_name = hunter_data['name']
+            h.hunter_name = hunter_data['hunter_name']
             if 'weapon' in hunter_data:
                 h.weapon = getWeapon(hunter_data['weapon'])
             if 'armor_set' in hunter_data:
@@ -254,20 +260,58 @@ class HunterHandler(BaseHandler):
             if(user):
                 hunter_data = json.loads(self.request.body)
                 h = ndb.Key(urlsafe=id).get()
-                if 'hunter_name' in hunter_data:
-                    h.hunter_name = hunter_data['name']
-                if 'weapon' in hunter_data:
-                    h.weapon = getWeapon(hunter_data['weapon'])
-                if 'armor_set' in hunter_data:
-                    h.armor_set = hunter_data['armor_set']
-                if 'target' in hunter_data:
-                    h.target = hunter_data['target']
-                h.put()
+                if(h.account_email == user.email):
+                    h.hunter_name = hunter_data['hunter_name']
+                    if 'weapon' in hunter_data:
+                        h.weapon = getWeapon(hunter_data['weapon'])
+                    else:
+                        h.weapon = None
+                    if 'armor_set' in hunter_data:
+                        h.armor_set = hunter_data['armor_set']
+                    else:
+                        h.armor_set = None
+                    if 'target' in hunter_data:
+                        h.target = hunter_data['target']
+                    else:
+                        target = None
+                    h.put()
 
-                h_dict = h.to_dict()
-                h_dict['self'] = h.key.urlsafe()
-                self.response.write(json.dumps(h_dict))
+                    h_dict = h.to_dict()
+                    h_dict['self'] = h.key.urlsafe()
+                    self.response.write(json.dumps(h_dict))
+                else:
+                    self.response.status = '403 Forbidden'
+                    self.response.write("403 Forbidden")
+            else:
+                self.redirect(myClientURL, True)
+        else:
+            self.response.status = '404 Not Found'
+            self.response.write("404 Not Found")
 
+    def patch(self, id=None):
+        if(id):
+            auth_token = self.request.headers['Authorization']
+            user = User.query(User.token == auth_token).get()
+            if(user):
+                hunter_data = json.loads(self.request.body)
+                h = ndb.Key(urlsafe=id).get()
+                if(h.account_email == user.email):
+                    if 'hunter_name' in hunter_data:
+                        h.hunter_name = hunter_data['hunter_name']
+                    if 'weapon' in hunter_data:
+                        h.weapon = getWeapon(hunter_data['weapon'])
+                    if 'armor_set' in hunter_data:
+                        h.armor_set = hunter_data['armor_set']
+                    if 'target' in hunter_data:
+                        h.target = hunter_data['target']
+                    h.put()
+
+                    h_dict = h.to_dict()
+                    h_dict['self'] = h.key.urlsafe()
+                    self.response.write(json.dumps(h_dict))
+                else:
+                    self.response.status = '403 Forbidden'
+                    self.response.write("403 Forbidden")
             else:
                 self.redirect(myClientURL, True)
         else:
@@ -280,14 +324,18 @@ class HunterHandler(BaseHandler):
         if id:
             if(user):
                 h = ndb.Key(urlsafe=id).get()
-                self.response.write(h)
+                if(h.account_email == user.email):
+                    self.response.write(h)
+                else:
+                    self.response.status = '403 Forbidden'
+                    self.response.write("403 Forbidden")
 
             else:
                 self.redirect(myClientURL, True)
         else:
             if(user):
                 all_hunters = []
-                hunters = Hunter.query().fetch()
+                hunters = Hunter.query(Hunter.account_email == user.email).fetch()
                 for each_hunter in hunters:
                     new_hunter = each_hunter.to_dict();
                     new_hunter['self'] = each_hunter.key.urlsafe()
@@ -354,6 +402,38 @@ class MonsterHandler(BaseHandler):
                 m.monster_name = monster_data['name']
                 if 'attack' in monster_data:
                     m.attack = monster_data['attack']
+                else:
+                    m.attack = None
+                if 'defense' in monster_data:
+                    m.defense = monster_data['defense']
+                else:
+                    m.defense = None
+                if 'elder' in monster_data:
+                    m.elder = monster_data['elder']
+                else:
+                    m.elder = False
+                m.put()
+
+                m_dict = m.to_dict()
+                m_dict['self'] = m.key.urlsafe()
+                self.response.write(json.dumps(m_dict))
+
+            else:
+                self.redirect(myClientURL, True)
+        else:
+            self.response.status = '404 Not Found'
+            self.response.write("404 Not Found")
+
+    def patch(self, id=None):
+        if(id):
+            auth_token = self.request.headers['Authorization']
+            user = User.query(User.token == auth_token).get()
+            if(user):
+                monster_data = json.loads(self.request.body)
+                m = ndb.Key(urlsafe=id).get()
+                m.monster_name = monster_data['name']
+                if 'attack' in monster_data:
+                    m.attack = monster_data['attack']
                 if 'defense' in monster_data:
                     m.defense = monster_data['defense']
                 if 'elder' in monster_data:
@@ -406,7 +486,12 @@ class MonsterHandler(BaseHandler):
                 self.response.write("404 Not Found")
         else:
             self.redirect(myClientURL, True)
-            
+
+#monkey patch for patch operation in webapp2 pulled from my last assignments          
+allowed_methods = webapp2.WSGIApplication.allowed_methods
+new_allowed_methods = allowed_methods.union(('PATCH',))
+webapp2.WSGIApplication.allowed_methods = new_allowed_methods
+
 # [START app]
 app = webapp2.WSGIApplication([
 
