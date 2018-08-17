@@ -23,7 +23,7 @@ config['webapp2_extras.sessions'] = {
 
 myClientId = '377383676562-ajuojjic2q53s3fom0b051epbimb5pde.apps.googleusercontent.com'
 myClientSecret = 'm8EIYexNy60_opmlpAzs4m_B'
-myClientURL = 'http://localhost:8080'
+myClientURL = 'https://garciaj4-final-project.appspot.com'
 
 ###############################################################################################
 #database structure, relationships are indicated by StructuredProperty property types         #
@@ -73,12 +73,12 @@ class BaseHandler(webapp2.RequestHandler):
 
 #####################################################################
 #the next four handlers are all for authentication, logging in/out  #
-#                                                                   #
+#mostly based or taken from my OAuth assignment                     #
 #####################################################################
 class LandingPage(BaseHandler):
     def get(self):
         landing_values = {
-            'redirectURL': myClientURL + '/user'
+            'redirectURL': myClientURL + '/login'
         }
 
         path = os.path.join(os.path.dirname(__file__), 'landing.html')
@@ -139,7 +139,7 @@ class login(BaseHandler):
                     'code':self.request.get('code'),
                     'client_id': myClientId,
                     'client_secret': myClientSecret,
-                    'redirect_uri': myClientURL + '/user',
+                    'redirect_uri': myClientURL + '/login',
                     'grant_type': 'authorization_code'
                 })
 
@@ -148,7 +148,7 @@ class login(BaseHandler):
 
                 self.session['token'] = result_data['access_token']
 
-                self.redirect(myClientURL + '/user')
+                self.redirect(myClientURL + '/login')
                 #self.response.write(result_data)
             else:
                 self.response.write('Invalid State Returned')
@@ -162,7 +162,7 @@ class login(BaseHandler):
             googleURL = 'https://accounts.google.com/o/oauth2/v2/auth'
             googleURL += '?response_type=code'
             googleURL += '&client_id=' + myClientId
-            googleURL += '&redirect_uri=' + myClientURL + '/user'
+            googleURL += '&redirect_uri=' + myClientURL + '/login'
             googleURL += '&scope=email'
             googleURL += '&state=' + myState
 
@@ -195,7 +195,7 @@ class logout(BaseHandler):
 #to retreive weapon information
 def getWeapon(weapon):
     query = '''?q={"name":{"$like":"%''' + weapon + '''%"}}'''
-    projection = '''&p={"id":"true",%20"name":"true",%20"rarity":"true",%20"attack":"true",%20"sharpness":"true",%20"assets":"true"}'''
+    projection = '''&p={"id":"true",%20"name":"true",%20"rarity":"true",%20"attack":"true",%20"assets":"true"}'''
     weaponURL = 'https://mhw-db.com/weapons' + query + projection
 
     result = urlfetch.fetch(url=weaponURL)
@@ -273,7 +273,7 @@ class HunterHandler(BaseHandler):
                     if 'target' in hunter_data:
                         h.target = hunter_data['target']
                     else:
-                        target = None
+                        h.target = None
                     h.put()
 
                     h_dict = h.to_dict()
@@ -325,7 +325,9 @@ class HunterHandler(BaseHandler):
             if(user):
                 h = ndb.Key(urlsafe=id).get()
                 if(h.account_email == user.email):
-                    self.response.write(h)
+                    h_dict = h.to_dict()
+                    h_dict['self'] = h.key.urlsafe()
+                    self.response.write(json.dumps(h_dict))
                 else:
                     self.response.status = '403 Forbidden'
                     self.response.write("403 Forbidden")
@@ -354,7 +356,9 @@ class HunterHandler(BaseHandler):
             if(h):
                 if(h.account_email == user.email):
                     ndb.Key(urlsafe=id).delete()
-                    self.response.write(h)
+                    h_dict = h.to_dict()
+                    h_dict['self'] = h.key.urlsafe()
+                    self.response.write(json.dumps(h_dict))
                 else:
                     self.response.status = '403 Forbidden'
                     self.response.write("403 Forbidden")
@@ -376,7 +380,7 @@ class MonsterHandler(BaseHandler):
         if(user):
             monster_data = json.loads(self.request.body)
             m = Monster()
-            m.monster_name = monster_data['name']
+            m.monster_name = monster_data['monster_name']
             if 'attack' in monster_data:
                 m.attack = monster_data['attack']
             if 'defense' in monster_data:
@@ -399,7 +403,7 @@ class MonsterHandler(BaseHandler):
             if(user):
                 monster_data = json.loads(self.request.body)
                 m = ndb.Key(urlsafe=id).get()
-                m.monster_name = monster_data['name']
+                m.monster_name = monster_data['monster_name']
                 if 'attack' in monster_data:
                     m.attack = monster_data['attack']
                 else:
@@ -431,7 +435,7 @@ class MonsterHandler(BaseHandler):
             if(user):
                 monster_data = json.loads(self.request.body)
                 m = ndb.Key(urlsafe=id).get()
-                m.monster_name = monster_data['name']
+                m.monster_name = monster_data['monster_name']
                 if 'attack' in monster_data:
                     m.attack = monster_data['attack']
                 if 'defense' in monster_data:
@@ -456,7 +460,9 @@ class MonsterHandler(BaseHandler):
         if id:
             if(user):
                 m = ndb.Key(urlsafe=id).get()
-                self.response.write(h)
+                m_dict = m.to_dict()
+                m_dict['self'] = m.key.urlsafe()
+                self.response.write(json.dumps(m_dict))
 
             else:
                 self.redirect(myClientURL, True)
@@ -480,7 +486,9 @@ class MonsterHandler(BaseHandler):
             m = ndb.Key(urlsafe=id).get()
             if(m):
                 ndb.Key(urlsafe=id).delete()
-                self.response.write(m)
+                m_dict = m.to_dict()
+                m_dict['self'] = m.key.urlsafe()
+                self.response.write(json.dumps(m_dict))
             else:
                 self.response.status = '404 Not Found'
                 self.response.write("404 Not Found")
@@ -496,8 +504,8 @@ webapp2.WSGIApplication.allowed_methods = new_allowed_methods
 app = webapp2.WSGIApplication([
 
     ('/', LandingPage),
-    ('/user', login),
     ('/home', HomePage),
+    ('/login', login),
     ('/logout', logout),
     ('/hunter', HunterHandler),
     ('/hunter/(.*)', HunterHandler),
